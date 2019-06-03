@@ -1,1 +1,11 @@
-entero holacomoestas;
+doble arr[10][10];
+
+func entero main(entero a, entero b){
+	doble arr[10][10];
+	si(asshole(1)==asshole(1)){
+		regresa;
+	}
+	sino{
+		regresa;
+	}
+}
