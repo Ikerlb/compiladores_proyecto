@@ -66,10 +66,23 @@ extern int yydebug;
     	vector* lts;
 	} sym;
 
+	typedef struct{
+		char op[10];
+		char arg1[34];
+		char arg2[34];
+		char res[34];
+	} quad;
+
+	typedef struct {
+		type* tipo;
+		char dir[34];
+	} expr;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
 	int functionAlreadyUsed;
+	expr* zero;
 
 	/*functions used withing semantic actions*/
 	type* insertType(type*);
@@ -83,8 +96,15 @@ extern int yydebug;
 	void* pop(vector*);
 	void* top(vector*);
 	unsigned int* newOffset();
+	char* newTemp();
+	quad* genQuad(char*,char*,char*,char*);
+	int isNumeric(type*);
+	char* widen(char*,type*,type*);
+	type* max(type*,type*);
+	expr* expression(char*,expr*,expr*);
+	expr* createExpression(type*);
 
-#line 88 "parser.tab.h" /* yacc.c:1927  */
+#line 108 "parser.tab.h" /* yacc.c:1927  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -141,7 +161,8 @@ extern int yydebug;
     FUNC = 305,
     SWITCH = 306,
     BREAK = 307,
-    COLON = 308
+    COLON = 308,
+    UOPS = 309
   };
 #endif
 
@@ -150,7 +171,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 79 "parser.y" /* yacc.c:1927  */
+#line 99 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];
@@ -158,12 +179,9 @@ union YYSTYPE
 	float numfloat;
 	int numint;
 	int args;
-	struct {
-		type* tipo;
-		char dir[32];
-	} exp;
+	expr* exp;
 
-#line 167 "parser.tab.h" /* yacc.c:1927  */
+#line 185 "parser.tab.h" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;

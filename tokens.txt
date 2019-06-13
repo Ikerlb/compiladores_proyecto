@@ -1,8 +1,9 @@
 doble arr[10][10];
 
 func entero main(entero a, entero b){
-	doble arr[10][10];
-	si(asshole(1)==asshole(1)){
+	entero c;
+	c=1-+10+10-10-10-20;
+	si(asshole(0)==asshole(0)){
 		regresa;
 	}
 	sino{

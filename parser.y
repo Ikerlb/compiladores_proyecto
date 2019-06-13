@@ -21,6 +21,8 @@ vector* env;
 
 vector* tt;
 
+vector* quads;
+
 /*Offset -> dirección relativa*/
 unsigned int* offset;
 /*Stack -> Stack de offset*/
@@ -31,8 +33,6 @@ unsigned int temp=0;
 unsigned int label=0;
 
 void yyerror(char*);
-
-
 
 %}
 
@@ -57,10 +57,23 @@ void yyerror(char*);
     	vector* lts;
 	} sym;
 
+	typedef struct{
+		char op[10];
+		char arg1[34];
+		char arg2[34];
+		char res[34];
+	} quad;
+
+	typedef struct {
+		type* tipo;
+		char dir[34];
+	} expr;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
 	int functionAlreadyUsed;
+	expr* zero;
 
 	/*functions used withing semantic actions*/
 	type* insertType(type*);
@@ -74,6 +87,13 @@ void yyerror(char*);
 	void* pop(vector*);
 	void* top(vector*);
 	unsigned int* newOffset();
+	char* newTemp();
+	quad* genQuad(char*,char*,char*,char*);
+	int isNumeric(type*);
+	char* widen(char*,type*,type*);
+	type* max(type*,type*);
+	expr* expression(char*,expr*,expr*);
+	expr* createExpression(type*);
 }
 
 %union{
@@ -83,10 +103,7 @@ void yyerror(char*);
 	float numfloat;
 	int numint;
 	int args;
-	struct {
-		type* tipo;
-		char dir[32];
-	} exp;
+	expr* exp;
 }
 
 %token IF ELSE RETURN 
@@ -106,21 +123,23 @@ void yyerror(char*);
 %token NUMDOUBLE VALCHAR VALSTRING
 %token FUNC SWITCH BREAK COLON
 
-%left PLUS MINUS AND OR
+%left AND OR
+%left PLUS MINUS
 %left PROD DIV MODULO
+%right UOPS
 %right NEG
 %left LPAREN RPAREN
 %left IF
 %left ELSE
 
 %type<args> Args ListArgs
-%type<exp> Expression
+%type<exp> Expression LeftPart
 %type<tipo> Array
 %type<lexval> ID
 %type<numint> NUMINT
 %type<numfloat> NUMFLOAT
 %type<numdouble> NUMDOUBLE
-//%define parse.error verbose
+%define parse.error verbose
 
 %%
 
@@ -200,7 +219,8 @@ Array :   /*epsilon*/                       {$$=t;}
 													$$=insertType(&nt);
 												}
 												else{
-													yyerror("Arrays can't be negative size");
+													char* s="Arrays can't be negative size";
+													yyerror(s);
 												}
 										    }
 
@@ -243,15 +263,18 @@ ListArgs :    ListArgs COMMA Type ID   {
 											if(existsSymbol($4)==-1)
 												insertSymbol($4,t,"arg");
 											else
-												yyerror("Repeated argument name");
+												char* s="Repeated argument name";
+												yyerror(s);
 													
 										}
 			| Type ID 					{
 											$$=1;
 											if(existsSymbol($2)==-1)
 											insertSymbol($2,t,"arg");
-											else
-												yyerror("Repeated argument name");
+											else{
+												char* s="Repeated argument name";
+												yyerror(s);
+											}
 										}
 
 Statements :  Statements Statement 
@@ -262,10 +285,18 @@ Statement :   IF LPAREN Condition RPAREN Statement
 			| WHILE LPAREN Condition RPAREN Statement
 			| DO Statement WHILE LPAREN Condition RPAREN SC
 			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement
-			| LeftPart ASSIGN Expression SC | RETURN Expression SC
-			| RETURN SC | LBRACKET Statements RBRACKET
+			| LeftPart ASSIGN Expression SC 									{
+																					if(strcmp($1->tipo->name,$3->tipo->name)==0)
+																						genQuad($3->dir,"","ASSIGN",$1->dir);
+																					else
+																						yyerror("Error. Assign of two different types");
+																				}
+			| RETURN Expression SC
+			| RETURN SC 
+			| LBRACKET Statements RBRACKET
 			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET 
-			| BREAK SC | PRINT Expression
+			| BREAK SC 
+			| PRINT Expression
 
 Cases : 
 		| CASE NUMINT COLON Statements Default
@@ -273,24 +304,39 @@ Cases :
 Default : 
 			| DEFAULT COLON Statements
 
-LeftPart :    ID 
-			| ArrayVar 
-			| ID DOT ID
+
+LeftPart :    ID 		{
+							sym* res=lookupSymbol($1);
+							if(res!=NULL){
+								$$=createExpression(res->type);
+								sprintf($$->dir,"%s",res->id);
+							}
+							else
+								yyerror("Symbol not found.");
+						}
+			| ArrayVar  {
+
+						}
+			| ID DOT ID {
+
+						}
 
 ArrayVar :    ID LSBRACKET Expression RSBRACKET 
 			| ArrayVar LSBRACKET Expression RSBRACKET
 
-/*Expresiones MISSING ID?*/
-Expression :  Expression PLUS Expression   {}
-			| Expression MINUS Expression  {}
-			| Expression PROD Expression   {}
-			| Expression DIV Expression    {}
-			| Expression MODULO Expression {}
+/*Expresiones MISSING ID, ID.ID and ARRAY??*/
+Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
+			| Expression MINUS Expression  {$$=expression("MINUS",$1,$3);}
+			| Expression PROD Expression   {$$=expression("PROD",$1,$3);}
+			| Expression DIV Expression    {$$=expression("DIV",$1,$3);}
+			| Expression MODULO Expression {$$=expression("MODULO",$1,$3);}
+			| MINUS Expression %prec UOPS  {$$=expression("MINUS",zero,$2);}
+			| PLUS Expression %prec UOPS   {$$=expression("PLUS",zero,$2);}
 			| VALSTRING                    {}
 			| CHAR                         {}
-			| NUMINT                       {$$.tipo=(type*)vector_get(tt,1);}
-			| NUMDOUBLE                    {$$.tipo=(type*)vector_get(tt,3);}
-			| NUMFLOAT                     {$$.tipo=(type*)vector_get(tt,2);}
+			| NUMINT                       {$$=createExpression((type*)vector_get(tt,1));sprintf($$->dir,"%d",$1);} //1
+			| NUMDOUBLE                    {$$=createExpression((type*)vector_get(tt,2));sprintf($$->dir,"%f",$1);} //2
+			| NUMFLOAT                     {$$=createExpression((type*)vector_get(tt,3));sprintf($$->dir,"%f",$1);} //3
 			| ID LPAREN Params RPAREN      {}
 
 /*Params -> lista_parametros | Epsilon*/
@@ -320,15 +366,74 @@ Relational :  LTHAN
 %%
 
 void yyerror(char* s){
-	printf("Syntax Error on line: %d\nArround word '%s'\n%s\n" , yylineno, yytext,s);
+	printf("Error found on line: %d\nArround word '%s'\n%s\n" , yylineno, yytext,s);
+}
+
+//look if yyerror halts or not
+expr* expression(char* op,expr* e1, expr* e2){
+	if((!isNumeric(e1->tipo))&&(!isNumeric(e2->tipo)))
+		yyerror("Type error.");
+	expr e={.tipo=NULL,.dir=""};
+	e.tipo=max(e1->tipo,e2->tipo);
+	strcpy(e.dir,newTemp());
+	expr* ptr=(expr*)malloc(sizeof(expr));
+	*ptr=e;
+	char* d1=widen(e1->dir,e1->tipo,ptr->tipo);
+	char* d2=widen(e2->dir,e2->tipo,ptr->tipo);
+	//printf("prueba\n");
+	genQuad(op,d1,d2,e.dir);
+	return ptr;
+}
+
+/*might use later*/
+int isNumeric(type* t1){
+	if(strcmp(t1->name,"double")==0)
+		return 1;
+	if(strcmp(t1->name,"float")==0)
+		return 1;
+	if(strcmp(t1->name,"int")==0)
+		return 1;
+	return 0;
+}
+
+//check types earlier?
+type* max(type* t1,type* t2){
+	if(strcmp(t1->name,"double")==0)
+		return t1;
+	if(strcmp(t2->name,"double")==0)
+		return t2;
+	if(strcmp(t1->name,"float")==0)
+		return t1;
+	if(strcmp(t2->name,"float")==0)
+		return t2;
+	return t1;
 }
 
 
 
+//t2 will be max type of binary expression
+char* widen(char* dir, type* t1, type* t2){
+	//should be exact same mem address. but do name check instead
+	if(strcmp(t1->name,t2->name)==0)
+		return dir;
+	//if the maximum is a double, cast other expression to double
+	if(strcmp(t2->name,"double")){
+		char* t=newTemp();
+		//do double (t=(double)d) cast in quads
+		genQuad("CAST","(double)",dir,t);
+		return t;
+	}
+	//otherwise it is a float (if max is int, the other expression MUST be int)
+	char* t=newTemp();
+	//do float (t=(float)d) cast in quads
+	genQuad("CAST","(float)",dir,t);
+	return t;	
+}
+
 char* newTemp(){
 	/*'_t'+32 possible digits*/
 	char* ptr=(char*)malloc(34);
-	sprintf(ptr,"t%d",temp++);
+	sprintf(ptr,"_t%d",temp++);
 	return ptr;
 }
 
@@ -336,6 +441,13 @@ char* newLabel(){
 	/*'_t'+32 possible digits*/
 	char* ptr=(char*)malloc(34);
 	sprintf(ptr,"_t%d",label++);
+	return ptr;
+}
+
+expr* createExpression(type* t){
+	expr e={.tipo=t,.dir=""};
+	expr* ptr=(expr*)malloc(sizeof(expr));
+	*ptr=e;
 	return ptr;
 }
 
@@ -351,6 +463,7 @@ int existsSymbol(char* id){
 	return -1;
 }
 
+/*generalization of existsSymbol*/
 int existsSymbolInTable(char* id,vector* ts){
 	int i;
 	for (i = 0; i < vector_total(ts); i++){
@@ -362,17 +475,23 @@ int existsSymbolInTable(char* id,vector* ts){
 }
 
 /*look for current scope, move up in heirarchy*/
+/*look for ts as well*/
 sym* lookupSymbol(char* id){
 	sym* psym;
-	int res;
-	for(int lvl=vector_total(env)-1;lvl>-1;){
-		vector* ts=(vector*)vector_get(env,lvl);
-		res=existsSymbolInTable(id,ts);
-		if(res>-1){
-			psym=(sym*)vector_get(ts,res);
-			return psym;
-		}
+	int res=existsSymbol(id);
+	if(res>-1){
+		psym=(sym*)vector_get(ts,res);
+		return psym;
 	}
+	else
+		for(int lvl=vector_total(env)-1;lvl>-1;lvl--){
+			vector* ts=(vector*)vector_get(env,lvl);
+			res=existsSymbolInTable(id,ts);
+			if(res>-1){
+				psym=(sym*)vector_get(ts,res);
+				return psym;
+			}
+		}
 	return NULL;
 }
 
@@ -413,6 +532,18 @@ type* insertType(type* t){
 	return ptr;
 }
 
+quad* genQuad(char* op,char* arg1,char* arg2,char* res){
+	quad q={.op="",.arg1="",.arg2="",.res=""};
+	strcpy(q.op,op);
+	strcpy(q.arg1,arg1);
+	strcpy(q.arg2,arg2);
+	strcpy(q.res,res);
+	quad* ptr=(quad*)malloc(sizeof(quad));
+	*ptr=q;
+	vector_add(quads,ptr);
+	return ptr;
+}
+
 void* top(vector* s){
 	int tm1=(s->total)-1;
 	return vector_get(s,tm1);
@@ -443,8 +574,12 @@ void init(){
 	stack=(vector*)malloc(sizeof(vector));
 	env=(vector*)malloc(sizeof(vector));
 
+	quads=(vector*)malloc(sizeof(vector));
+
 	vector_init(stack);
 	vector_init(env);
+
+	vector_init(quads);
 
 	type void_type={"void",NULL,0,-1,NULL}; //0
 	insertType(&void_type);
@@ -456,6 +591,10 @@ void init(){
 	insertType(&double_type);
 	type char_type={"char",NULL,1,-1,NULL}; //4
 	insertType(&char_type);
+
+	zero=createExpression((type*)vector_get(tt,1));
+	sprintf(zero->dir,"%d",0);
+
 }
 
 vector* newSymbolTable(){
@@ -477,6 +616,15 @@ void print_type_table(){
 		type* tp=((type*)vector_get(tt,i));
 		char* base=tp->base?((tp->base)->name):("-1");
 		printf("(type: %s, base: %s, width: %d, elems: %d)\n",(tp->name),base,(tp->width),(tp->elem_num));
+	}
+}
+
+void print_quads(){
+	int i;
+	printf("Quads:\n");
+	for (i = 0; i < vector_total(quads); i++){
+		quad* q=((quad*)vector_get(quads,i));
+		printf("%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
 	}
 }
 
@@ -508,4 +656,5 @@ int main(int argc, char** argv){
 	printf("Main symbol table\n");
 	print_symbol_table();
 	printf("%d\n",*offset);
+	print_quads();
 }

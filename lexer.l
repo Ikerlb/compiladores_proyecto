@@ -81,9 +81,9 @@ char toks[51][11]={"IF","ELSE","RETURN","PRINT",
 <INITIAL>"."                      return(DOT);
 <INITIAL>","                      return(COMMA);
 <INITIAL>[a-zA-Z][a-zA-Z0-9]*     {strcpy(yylval.lexval, yytext);return(ID);} /*Cualquier cadena que comience con una letra y le continue cualquier cantidad de caracteres alphanumericos*/
-<INITIAL>[-+]?[0-9]+              {yylval.numint=atoi(yytext);return(NUMINT);} /*Cualquier numero entero, sin importar su tamaño*/
-<INITIAL>[-+]?[0-9]*[.][0-9]+[Ff] {yylval.numfloat=atof(yytext);return(NUMFLOAT);} /*Cualquier número decimal, sin importar su tamaño pero debe de terminar con F ó f*/
-<INITIAL>[-+]?[0-9]*[.][0-9]+     {yylval.numdouble=atof(yytext);return(NUMDOUBLE);} /*Cualquier número decimal, sin importar su tamaño */
+<INITIAL>[0-9]+              {yylval.numint=atoi(yytext);return(NUMINT);} /*Cualquier numero entero, sin importar su tamaño*/
+<INITIAL>[0-9]*[.][0-9]+[Ff] {yylval.numfloat=atof(yytext);return(NUMFLOAT);} /*Cualquier número decimal, sin importar su tamaño pero debe de terminar con F ó f*/
+<INITIAL>[0-9]*[.][0-9]+     {yylval.numdouble=atof(yytext);return(NUMDOUBLE);} /*Cualquier número decimal, sin importar su tamaño */
 <INITIAL>\'(\\.|[^"\\])\'         return(VALCHAR); /*Un único caracter de la siguiente forma 'c'*/
 <INITIAL>\"(\\.|[^"\\])*\"        return(VALSTRING); /*Sucesión de caracteres. Incluso la sucesición vacia*/
 <INITIAL>.                        {errcount+=1;yyerror(yylineno,yytext);} /*No soportado*/
