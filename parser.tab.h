@@ -78,6 +78,12 @@ extern int yydebug;
 		char dir[34];
 	} expr;
 
+	typedef struct{
+		type* tipo;
+		char dir[34];
+		char base[34];
+	} arrVar;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
@@ -103,8 +109,10 @@ extern int yydebug;
 	type* max(type*,type*);
 	expr* expression(char*,expr*,expr*);
 	expr* createExpression(type*);
+	arrVar* createArrVar(type*);
+	int existsSymbolInTable(char*,vector*);
 
-#line 108 "parser.tab.h" /* yacc.c:1927  */
+#line 116 "parser.tab.h" /* yacc.c:1927  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -171,7 +179,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 99 "parser.y" /* yacc.c:1927  */
+#line 107 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];
@@ -180,8 +188,9 @@ union YYSTYPE
 	int numint;
 	int args;
 	expr* exp;
+	arrVar* arr;
 
-#line 185 "parser.tab.h" /* yacc.c:1927  */
+#line 194 "parser.tab.h" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;

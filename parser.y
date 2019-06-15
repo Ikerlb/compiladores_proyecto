@@ -69,6 +69,12 @@ void yyerror(char*);
 		char dir[34];
 	} expr;
 
+	typedef struct{
+		type* tipo;
+		char dir[34];
+		char base[34];
+	} arrVar;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
@@ -94,6 +100,8 @@ void yyerror(char*);
 	type* max(type*,type*);
 	expr* expression(char*,expr*,expr*);
 	expr* createExpression(type*);
+	arrVar* createArrVar(type*);
+	int existsSymbolInTable(char*,vector*);
 }
 
 %union{
@@ -104,6 +112,7 @@ void yyerror(char*);
 	int numint;
 	int args;
 	expr* exp;
+	arrVar* arr;
 }
 
 %token IF ELSE RETURN 
@@ -134,6 +143,7 @@ void yyerror(char*);
 
 %type<args> Args ListArgs
 %type<exp> Expression LeftPart
+%type<arr> ArrayVar
 %type<tipo> Array
 %type<lexval> ID
 %type<numint> NUMINT
@@ -262,9 +272,10 @@ ListArgs :    ListArgs COMMA Type ID   {
 											$$=$1+1;
 											if(existsSymbol($4)==-1)
 												insertSymbol($4,t,"arg");
-											else
+											else{
 												char* s="Repeated argument name";
 												yyerror(s);
+											}
 													
 										}
 			| Type ID 					{
@@ -286,10 +297,14 @@ Statement :   IF LPAREN Condition RPAREN Statement
 			| DO Statement WHILE LPAREN Condition RPAREN SC
 			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement
 			| LeftPart ASSIGN Expression SC 									{
+																					printf("%s\n",$1->tipo->name);
+																					printf("%s\n",$3->tipo->name);
 																					if(strcmp($1->tipo->name,$3->tipo->name)==0)
-																						genQuad($3->dir,"","ASSIGN",$1->dir);
-																					else
-																						yyerror("Error. Assign of two different types");
+																						genQuad("ASSIGN",$3->dir,"",$1->dir);
+																					else{
+																						char* s="Error. Assign of two different types";
+																						yyerror(s);
+																					}
 																				}
 			| RETURN Expression SC
 			| RETURN SC 
@@ -311,18 +326,52 @@ LeftPart :    ID 		{
 								$$=createExpression(res->type);
 								sprintf($$->dir,"%s",res->id);
 							}
-							else
-								yyerror("Symbol not found.");
+							else{
+								char* s="Symbol not found.";
+								yyerror(s);
+							}
 						}
 			| ArrayVar  {
+							/*CHECK!*/
+							//printf("%s\n",$1->tipo->name);
+							$$=createExpression($1->tipo);
+							sprintf($$->dir,"%s[%s]",$1->base,$1->dir);
 
 						}
 			| ID DOT ID {
-
+							sym* res=lookupSymbol($1);
+							if(res!=NULL){
+								if(strcmp((res->type)->name,"register")==0){
+									//$$=createExpression($3->tipo);
+									//sprintf(&&->dir,"%s.%s",$1,$3);
+									int exists=existsSymbolInTable($3,(res->type)->ts);
+									if(exists>=0){
+										sym* res2=(sym*)vector_get((res->type)->ts,exists);
+										$$=createExpression(res2->type);
+										sprintf($$->dir,"%s.%s",$1,$3);
+									}
+								}
+							}
 						}
 
-ArrayVar :    ID LSBRACKET Expression RSBRACKET 
-			| ArrayVar LSBRACKET Expression RSBRACKET
+ArrayVar :    ID LSBRACKET Expression RSBRACKET 		{
+															sym* res=lookupSymbol($1);
+															if(res!=NULL){
+																$$=createArrVar((res->type)->base);
+																sprintf($$->base,"%s",res->id);
+																sprintf($$->dir,"%s",newTemp());
+																char buff[32];
+																sprintf(buff,"%d",($$->tipo)->width);
+																genQuad("PROD",$3->dir,buff,$$->dir);
+															}
+															else{
+																char* s="Symbol not found";
+																yyerror(s);
+															}
+														}
+			| ArrayVar LSBRACKET Expression RSBRACKET   {
+
+														}
 
 /*Expresiones MISSING ID, ID.ID and ARRAY??*/
 Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
@@ -332,11 +381,46 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 			| Expression MODULO Expression {$$=expression("MODULO",$1,$3);}
 			| MINUS Expression %prec UOPS  {$$=expression("MINUS",zero,$2);}
 			| PLUS Expression %prec UOPS   {$$=expression("PLUS",zero,$2);}
+			/*??*/
+			| ID					   	   {
+												sym* res=lookupSymbol($1);
+												if(res!=NULL){
+													$$=createExpression(res->type);
+													sprintf($$->dir,"%s",res->id);
+												}
+												else{
+													char* s="Symbol not found.";
+													yyerror(s);
+												}	
+										   }
+			| ArrayVar 					   {
+												$$=createExpression($1->tipo);
+												sprintf($$->dir,"%s",newTemp());
+												char buff[32];
+												sprintf(buff,"%s[%s]",$1->base,$1->dir);
+												genQuad("ASSIGN",buff,"",$$->dir);
+											}
+			| ID DOT ID 					{
+												sym* res=lookupSymbol($1);
+												if(res!=NULL){
+													if(strcmp((res->type)->name,"register")==0){
+														//$$=createExpression($3->tipo);
+														//sprintf(&&->dir,"%s.%s",$1,$3);
+														int exists=existsSymbolInTable($3,(res->type)->ts);
+														if(exists>=0){
+															sym* res2=(sym*)vector_get((res->type)->ts,exists);
+															$$=createExpression(res2->type);
+															sprintf($$->dir,"%s",newTemp());
+															genQuad(".",$1,$3,$$->dir);
+														}
+													}
+												}
+										    }
 			| VALSTRING                    {}
 			| CHAR                         {}
 			| NUMINT                       {$$=createExpression((type*)vector_get(tt,1));sprintf($$->dir,"%d",$1);} //1
-			| NUMDOUBLE                    {$$=createExpression((type*)vector_get(tt,2));sprintf($$->dir,"%f",$1);} //2
-			| NUMFLOAT                     {$$=createExpression((type*)vector_get(tt,3));sprintf($$->dir,"%f",$1);} //3
+			| NUMFLOAT                     {$$=createExpression((type*)vector_get(tt,2));sprintf($$->dir,"%f",$1);} //2
+			| NUMDOUBLE                    {$$=createExpression((type*)vector_get(tt,3));sprintf($$->dir,"%f",$1);} //3
 			| ID LPAREN Params RPAREN      {}
 
 /*Params -> lista_parametros | Epsilon*/
@@ -441,6 +525,13 @@ char* newLabel(){
 	/*'_t'+32 possible digits*/
 	char* ptr=(char*)malloc(34);
 	sprintf(ptr,"_t%d",label++);
+	return ptr;
+}
+
+arrVar* createArrVar(type* t){
+	arrVar av={.tipo=t,.dir="",.base=""};
+	arrVar* ptr=(arrVar*)malloc(sizeof(arrVar));
+	*ptr=av;
 	return ptr;
 }
 
