@@ -73,7 +73,7 @@ extern int yydebug;
 		char res[34];
 	} quad;
 
-	typedef struct {
+	typedef struct{
 		type* tipo;
 		char dir[34];
 	} expr;
@@ -83,6 +83,15 @@ extern int yydebug;
 		char dir[34];
 		char base[34];
 	} arrVar;
+
+	typedef struct{
+		vector* code;	
+	} statement;
+
+	typedef struct{
+		vector* tl;
+		vector* fl;
+	} condition;
 
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
@@ -103,6 +112,7 @@ extern int yydebug;
 	void* top(vector*);
 	unsigned int* newOffset();
 	char* newTemp();
+	char* newLabel();
 	quad* genQuad(char*,char*,char*,char*);
 	int isNumeric(type*);
 	char* widen(char*,type*,type*);
@@ -111,8 +121,14 @@ extern int yydebug;
 	expr* createExpression(type*);
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
+	statement* createStatement(vector*);
+	void print_quads();
+	vector* newQuadsVector();
+	condition* createConditionLists();
+	void backpatch(vector*,char*);
+	vector* merge(vector*,vector*);
 
-#line 116 "parser.tab.h" /* yacc.c:1927  */
+#line 132 "parser.tab.h" /* yacc.c:1927  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -179,18 +195,21 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 107 "parser.y" /* yacc.c:1927  */
+#line 123 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];
+	char rel[32];
 	double numdouble;
 	float numfloat;
 	int numint;
 	int args;
 	expr* exp;
 	arrVar* arr;
+	statement* stmt;
+	condition* cond;
 
-#line 194 "parser.tab.h" /* yacc.c:1927  */
+#line 213 "parser.tab.h" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;

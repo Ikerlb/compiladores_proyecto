@@ -1,12 +1,9 @@
-doble arr[10];
+doble arr[10][10];
+registro {doble real;doble imaginario;} complejo;
 
 func entero main(entero a, entero b){
 	entero c;
-	arr[1]=1.0;
-	si(asshole(0)==asshole(0)){
-		regresa;
-	}
-	sino{
+	si(c==0 y c==1+1+1-1){
 		regresa;
 	}
 }

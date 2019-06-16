@@ -64,7 +64,7 @@ void yyerror(char*);
 		char res[34];
 	} quad;
 
-	typedef struct {
+	typedef struct{
 		type* tipo;
 		char dir[34];
 	} expr;
@@ -74,6 +74,15 @@ void yyerror(char*);
 		char dir[34];
 		char base[34];
 	} arrVar;
+
+	typedef struct{
+		vector* code;	
+	} statement;
+
+	typedef struct{
+		vector* tl;
+		vector* fl;
+	} condition;
 
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
@@ -94,6 +103,7 @@ void yyerror(char*);
 	void* top(vector*);
 	unsigned int* newOffset();
 	char* newTemp();
+	char* newLabel();
 	quad* genQuad(char*,char*,char*,char*);
 	int isNumeric(type*);
 	char* widen(char*,type*,type*);
@@ -102,17 +112,26 @@ void yyerror(char*);
 	expr* createExpression(type*);
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
+	statement* createStatement(vector*);
+	void print_quads();
+	vector* newQuadsVector();
+	condition* createConditionLists();
+	void backpatch(vector*,char*);
+	vector* merge(vector*,vector*);
 }
 
 %union{
 	type* tipo;
 	char lexval[32];
+	char rel[32];
 	double numdouble;
 	float numfloat;
 	int numint;
 	int args;
 	expr* exp;
 	arrVar* arr;
+	statement* stmt;
+	condition* cond;
 }
 
 %token IF ELSE RETURN 
@@ -145,6 +164,9 @@ void yyerror(char*);
 %type<exp> Expression LeftPart
 %type<arr> ArrayVar
 %type<tipo> Array
+%type<stmt> Statement
+%type<cond> Condition
+%type<rel> Relational
 %type<lexval> ID
 %type<numint> NUMINT
 %type<numfloat> NUMFLOAT
@@ -291,27 +313,32 @@ ListArgs :    ListArgs COMMA Type ID   {
 Statements :  Statements Statement 
 			| Statement
 
-Statement :   IF LPAREN Condition RPAREN Statement
-			| IF LPAREN Condition RPAREN Statement ELSE Statement
-			| WHILE LPAREN Condition RPAREN Statement
-			| DO Statement WHILE LPAREN Condition RPAREN SC
-			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement
+Statement :   IF LPAREN Condition RPAREN Statement 								{print_quads();}
+			| IF LPAREN Condition RPAREN Statement ELSE Statement 				{}
+			| WHILE LPAREN Condition RPAREN Statement 							{}
+			| DO Statement WHILE LPAREN Condition RPAREN SC 					{}
+			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement   {}
 			| LeftPart ASSIGN Expression SC 									{
-																					printf("%s\n",$1->tipo->name);
-																					printf("%s\n",$3->tipo->name);
-																					if(strcmp($1->tipo->name,$3->tipo->name)==0)
+																					/*CHECK!*/
+																					if(strcmp($1->tipo->name,$3->tipo->name)==0){
 																						genQuad("ASSIGN",$3->dir,"",$1->dir);
+																						$$=createStatement(quads);
+																						printf("Statement: assignation.\n");
+																						print_quads();
+																						quads=newQuadsVector();
+
+																					}
 																					else{
 																						char* s="Error. Assign of two different types";
 																						yyerror(s);
 																					}
 																				}
-			| RETURN Expression SC
-			| RETURN SC 
-			| LBRACKET Statements RBRACKET
-			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET 
-			| BREAK SC 
-			| PRINT Expression
+			| RETURN Expression SC 												{}
+			| RETURN SC 														{}
+			| LBRACKET Statements RBRACKET 										{}
+			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
+			| BREAK SC  														{}
+			| PRINT Expression 													{}
 
 Cases : 
 		| CASE NUMINT COLON Statements Default
@@ -332,25 +359,34 @@ LeftPart :    ID 		{
 							}
 						}
 			| ArrayVar  {
-							/*CHECK!*/
-							//printf("%s\n",$1->tipo->name);
 							$$=createExpression($1->tipo);
 							sprintf($$->dir,"%s[%s]",$1->base,$1->dir);
 
 						}
 			| ID DOT ID {
 							sym* res=lookupSymbol($1);
+							char buff[100];
 							if(res!=NULL){
 								if(strcmp((res->type)->name,"register")==0){
-									//$$=createExpression($3->tipo);
-									//sprintf(&&->dir,"%s.%s",$1,$3);
 									int exists=existsSymbolInTable($3,(res->type)->ts);
 									if(exists>=0){
 										sym* res2=(sym*)vector_get((res->type)->ts,exists);
 										$$=createExpression(res2->type);
 										sprintf($$->dir,"%s.%s",$1,$3);
 									}
+									else{
+										sprintf(buff,"Register type %s does not contain field %s",$1,$3);
+										yyerror(buff);
+									}
 								}
+								else{
+									sprintf(buff,"Symbol %s is not of type register",$1);
+									yyerror(buff);
+								}
+							}
+							else{
+								sprintf(buff,"Symbol %s not found",$1);
+								yyerror(buff);
 							}
 						}
 
@@ -370,7 +406,14 @@ ArrayVar :    ID LSBRACKET Expression RSBRACKET 		{
 															}
 														}
 			| ArrayVar LSBRACKET Expression RSBRACKET   {
-
+															$$=createArrVar(($1->tipo)->base);
+															strcpy($$->base,$1->base);
+															char* temp=newTemp();
+															sprintf($$->dir,"%s",newTemp());
+															char buff[32];
+															sprintf(buff,"%d",($$->tipo)->width);
+															genQuad("PROD",$3->dir,buff,temp);
+															genQuad("PLUS",$1->dir,temp,$$->dir);
 														}
 
 /*Expresiones MISSING ID, ID.ID and ARRAY??*/
@@ -402,10 +445,9 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 											}
 			| ID DOT ID 					{
 												sym* res=lookupSymbol($1);
+												char buff[100];
 												if(res!=NULL){
 													if(strcmp((res->type)->name,"register")==0){
-														//$$=createExpression($3->tipo);
-														//sprintf(&&->dir,"%s.%s",$1,$3);
 														int exists=existsSymbolInTable($3,(res->type)->ts);
 														if(exists>=0){
 															sym* res2=(sym*)vector_get((res->type)->ts,exists);
@@ -413,7 +455,20 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 															sprintf($$->dir,"%s",newTemp());
 															genQuad(".",$1,$3,$$->dir);
 														}
+														else{
+															sprintf(buff,"Register type %s does not contain field %s",$1,$3);
+															yyerror(buff);
+														}
+
 													}
+													else{
+														sprintf(buff,"Symbol %s is not of type register",$1);
+														yyerror(buff);
+													}
+												}
+												else{
+													sprintf(buff,"Symbol %s not found",$1);
+													yyerror(buff);
 												}
 										    }
 			| VALSTRING                    {}
@@ -430,20 +485,61 @@ Params : | ListParams
 ListParams :  ListParams COMMA Expression 
 			| Expression
 
-Condition :   Condition OR Condition 
-			| Condition AND Condition 
-			| NEG Condition 
-			| LPAREN Condition RPAREN
-			| Expression Relational Expression 
-			| TRUE 
-			| FALSE
+Condition :   Condition OR 						{
+													char* lbl=newLabel();
+													backpatch($1->fl,lbl);
+													genQuad("LABEL",lbl,"","");
+												}
+			  Condition 			            {
+			  										$$=createConditionLists();
+			  										$$->tl=merge($1->tl,$4->tl);
+			  										$$->fl=$4->fl;
+												}
+			| Condition AND 					{
+													char* lbl=newLabel();
+													backpatch($1->tl,lbl);
+													genQuad("LABEL",lbl,"","");
+												}
+			  Condition 						{
+			  										$$=createConditionLists();
+			  										$$->tl=$4->tl;
+			  										$$->fl=merge($1->fl,$4->fl);
+												}
+			| NEG Condition 					{
+													/*use same struct, change fields?*/
+													$$=createConditionLists();
+													$$->tl=$2->fl;
+													$$->fl=$2->tl;
+												}
+			| LPAREN Condition RPAREN			{$$=$2;}
+			| Expression Relational Expression 	{	
+													/*CHECK EXPRESSIONS TYPE! or do implicit cast!*/
+													if(strcmp($1->tipo->name,$3->tipo->name)==0){
+														$$=createConditionLists();
+														vector_add($$->tl,genQuad($2,$1->dir,$3->dir,"GOTO _"));
+														vector_add($$->fl,genQuad("GOTO","_","",""));
+													}
+													else{
+														char buff[100];
+														sprintf(buff,"Expressions %s and %s have different types.",$1->dir,$3->dir);
+														yyerror(buff);
+													}
+												}
+			| TRUE 								{
+													$$=createConditionLists();
+													vector_add($$->tl,genQuad("GOTO","_","",""));
+												}
+			| FALSE 							{
+													$$=createConditionLists();
+													vector_add($$->fl,genQuad("GOTO","_","",""));
+												}
 
-Relational :  LTHAN 
-			| GTHAN 
-			| GETHAN 
-			| LETHAN 
-			| NEQUAL 
-			| EQUAL
+Relational :  LTHAN 	{strcpy($$,"LTHAN");}
+			| GTHAN 	{strcpy($$,"GTHAN");}
+			| GETHAN 	{strcpy($$,"GETHAN");}
+			| LETHAN 	{strcpy($$,"LETHAN");}
+			| NEQUAL 	{strcpy($$,"NEQUAL");}
+			| EQUAL		{strcpy($$,"EQUAL");}
 
 
 
@@ -467,6 +563,26 @@ expr* expression(char* op,expr* e1, expr* e2){
 	//printf("prueba\n");
 	genQuad(op,d1,d2,e.dir);
 	return ptr;
+}
+
+void backpatch(vector* lst,char* lbl){
+	int i;
+	for (i = 0;i<vector_total(lst); i++){
+		quad* q=(quad*)vector_get(lst,i);
+		if(strcmp(q->arg1,"_")==0)
+			strcpy(q->arg1,lbl);
+		else
+			strcpy(q->res,lbl);			
+	}
+}
+
+vector* merge(vector* v1,vector* v2){
+	int i;
+	for (i = 0;i<vector_total(v2); i++){
+		quad* q=(quad*)vector_get(v2,i);
+		vector_add(v1,q);
+	}
+	return v1;
 }
 
 /*might use later*/
@@ -523,8 +639,8 @@ char* newTemp(){
 
 char* newLabel(){
 	/*'_t'+32 possible digits*/
-	char* ptr=(char*)malloc(34);
-	sprintf(ptr,"_t%d",label++);
+	char* ptr=(char*)malloc(33);
+	sprintf(ptr,"L%d",label++);
 	return ptr;
 }
 
@@ -539,6 +655,25 @@ expr* createExpression(type* t){
 	expr e={.tipo=t,.dir=""};
 	expr* ptr=(expr*)malloc(sizeof(expr));
 	*ptr=e;
+	return ptr;
+}
+
+/*????*/
+statement* createStatement(vector* code){
+	statement st={.code=code};
+	statement* ptr=(statement*)malloc(sizeof(statement));
+	*ptr=st;
+	return ptr;
+}
+
+condition* createConditionLists(){
+	vector* tl=(vector*)malloc(sizeof(vector));
+	vector_init(tl);
+	vector* fl=(vector*)malloc(sizeof(vector));
+	vector_init(fl);
+	condition c={.tl=tl,.fl=fl};
+	condition* ptr=(condition*)malloc(sizeof(condition));
+	*ptr=c;
 	return ptr;
 }
 
@@ -694,6 +829,12 @@ vector* newSymbolTable(){
 	return np;
 }
 
+vector* newQuadsVector(){
+	vector* np=(vector*)malloc(sizeof(vector));
+	vector_init(np);
+	return np;
+}
+
 unsigned int* newOffset(){
 	unsigned int* np=(unsigned int*)malloc(sizeof(unsigned int));
 	*np=0;
@@ -715,7 +856,24 @@ void print_quads(){
 	printf("Quads:\n");
 	for (i = 0; i < vector_total(quads); i++){
 		quad* q=((quad*)vector_get(quads,i));
-		printf("%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
+		if(strcmp(q->op,"LTHAN")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"GTHAN")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"LETHAN")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"GETHAN")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"EQUAL")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"NEQUAL")==0)
+			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		else if(strcmp(q->op,"GOTO")==0)
+			printf("%s %s\n",q->op,q->arg1);
+		else if(strcmp(q->op,"LABEL")==0)
+			printf("%s %s\n",q->op,q->arg1);
+		else	
+			printf("%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
 	}
 }
 
@@ -747,5 +905,4 @@ int main(int argc, char** argv){
 	printf("Main symbol table\n");
 	print_symbol_table();
 	printf("%d\n",*offset);
-	print_quads();
 }
