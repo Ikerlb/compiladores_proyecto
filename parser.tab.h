@@ -85,13 +85,30 @@ extern int yydebug;
 	} arrVar;
 
 	typedef struct{
-		vector* code;	
+		vector* nextlist;	
 	} statement;
 
 	typedef struct{
 		vector* tl;
 		vector* fl;
 	} condition;
+
+	typedef struct{
+		vector* btl;
+		vector* bfl;
+		vector* nextlist;
+	} ifthen;
+
+	typedef struct{
+		vector* nextlist;
+		char lbl[33];
+		vector* n;
+	} ifelse;
+
+	typedef struct{
+		vector* nextlist;
+		char lbl[33];
+	} ifaux;
 
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
@@ -121,14 +138,18 @@ extern int yydebug;
 	expr* createExpression(type*);
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
-	statement* createStatement(vector*);
-	void print_quads();
+	statement* createStatement();
+	void print_quads(vector*);
 	vector* newQuadsVector();
 	condition* createConditionLists();
 	void backpatch(vector*,char*);
 	vector* merge(vector*,vector*);
+	ifthen* createIfThen(condition*);
+	ifelse* createIfElse();
+	vector* createList();
+	ifaux* createIfAux();
 
-#line 132 "parser.tab.h" /* yacc.c:1927  */
+#line 153 "parser.tab.h" /* yacc.c:1927  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -195,7 +216,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 123 "parser.y" /* yacc.c:1927  */
+#line 144 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];
@@ -208,8 +229,11 @@ union YYSTYPE
 	arrVar* arr;
 	statement* stmt;
 	condition* cond;
+	ifthen* it;
+	ifelse* ie;
+	ifaux* nif;
 
-#line 213 "parser.tab.h" /* yacc.c:1927  */
+#line 237 "parser.tab.h" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;

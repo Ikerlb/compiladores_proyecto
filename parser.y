@@ -76,13 +76,30 @@ void yyerror(char*);
 	} arrVar;
 
 	typedef struct{
-		vector* code;	
+		vector* nextlist;	
 	} statement;
 
 	typedef struct{
 		vector* tl;
 		vector* fl;
 	} condition;
+
+	typedef struct{
+		vector* btl;
+		vector* bfl;
+		vector* nextlist;
+	} ifthen;
+
+	typedef struct{
+		vector* nextlist;
+		char lbl[33];
+		vector* n;
+	} ifelse;
+
+	typedef struct{
+		vector* nextlist;
+		char lbl[33];
+	} ifaux;
 
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
@@ -112,12 +129,16 @@ void yyerror(char*);
 	expr* createExpression(type*);
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
-	statement* createStatement(vector*);
-	void print_quads();
+	statement* createStatement();
+	void print_quads(vector*);
 	vector* newQuadsVector();
 	condition* createConditionLists();
 	void backpatch(vector*,char*);
 	vector* merge(vector*,vector*);
+	ifthen* createIfThen(condition*);
+	ifelse* createIfElse();
+	vector* createList();
+	ifaux* createIfAux();
 }
 
 %union{
@@ -132,6 +153,9 @@ void yyerror(char*);
 	arrVar* arr;
 	statement* stmt;
 	condition* cond;
+	ifthen* it;
+	ifelse* ie;
+	ifaux* nif;
 }
 
 %token IF ELSE RETURN 
@@ -157,14 +181,18 @@ void yyerror(char*);
 %right UOPS
 %right NEG
 %left LPAREN RPAREN
-%left IF
-%left ELSE
+%nonassoc "then"
+%nonassoc ELSE
+
 
 %type<args> Args ListArgs
 %type<exp> Expression LeftPart
 %type<arr> ArrayVar
 %type<tipo> Array
 %type<stmt> Statement
+%type<it> If
+%type<ie> Else
+%type<nif> Nif
 %type<cond> Condition
 %type<rel> Relational
 %type<lexval> ID
@@ -313,32 +341,81 @@ ListArgs :    ListArgs COMMA Type ID   {
 Statements :  Statements Statement 
 			| Statement
 
-Statement :   IF LPAREN Condition RPAREN Statement 								{print_quads();}
-			| IF LPAREN Condition RPAREN Statement ELSE Statement 				{}
-			| WHILE LPAREN Condition RPAREN Statement 							{}
-			| DO Statement WHILE LPAREN Condition RPAREN SC 					{}
-			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement   {}
+Statement :   If Else  															{
+																					//ifthen
+																					$$=createStatement();
+																					if($2==NULL){
+																						$$->nextlist=merge($1->bfl,$1->nextlist);
+																						//print_quads($$->nextlist);
+																					}
+																					//ifelse
+																					else{
+																						backpatch($1->bfl,$2->lbl);
+																						vector* temp=merge($1->nextlist,$2->n);
+																						$$->nextlist=merge(temp,$2->nextlist);
+																					}
+																				}
+			| WHILE LPAREN	 													{
+
+																				}	 
+			  Condition RPAREN 													{
+
+			  																	} 
+			  Statement 														{
+
+																				}
+			| DO Statement WHILE LPAREN Condition RPAREN SC 					{
+
+																				}
+			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement   {
+
+																				}
 			| LeftPart ASSIGN Expression SC 									{
 																					/*CHECK!*/
 																					if(strcmp($1->tipo->name,$3->tipo->name)==0){
 																						genQuad("ASSIGN",$3->dir,"",$1->dir);
-																						$$=createStatement(quads);
-																						printf("Statement: assignation.\n");
-																						print_quads();
-																						quads=newQuadsVector();
-
+																						$$=createStatement();
+																						$$->nextlist=createList();
 																					}
 																					else{
 																						char* s="Error. Assign of two different types";
 																						yyerror(s);
 																					}
 																				}
-			| RETURN Expression SC 												{}
+			| RETURN Expression SC 												{
+
+																				}
 			| RETURN SC 														{}
 			| LBRACKET Statements RBRACKET 										{}
 			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
 			| BREAK SC  														{}
 			| PRINT Expression 													{}
+
+If : IF LPAREN Condition RPAREN {
+									char* lbl=newLabel();
+									backpatch($3->tl,lbl);
+									genQuad("LABEL",lbl,"","");
+								} 
+	Statement 					{
+									$$=createIfThen($3);
+									$$->nextlist=$6->nextlist;
+								}
+
+Else :	 %prec "then"      	 {$$=NULL;}
+		| ELSE Nif Statement {
+								$$=createIfElse();
+								strcpy($$->lbl,$2->lbl);
+								$$->n=$2->nextlist;
+								$$->nextlist=$3->nextlist;
+							 }
+
+Nif : {
+		$$=createIfAux();
+		vector_add($$->nextlist,genQuad("GOTO","_","",""));
+		char* lbl=newLabel();
+		genQuad("LABEL",lbl,"","");
+		strcpy($$->lbl,lbl);
+	  }
 
 Cases : 
 		| CASE NUMINT COLON Statements Default
@@ -567,12 +644,15 @@ expr* expression(char* op,expr* e1, expr* e2){
 
 void backpatch(vector* lst,char* lbl){
 	int i;
+	char buff[100];
 	for (i = 0;i<vector_total(lst); i++){
 		quad* q=(quad*)vector_get(lst,i);
 		if(strcmp(q->arg1,"_")==0)
 			strcpy(q->arg1,lbl);
-		else
-			strcpy(q->res,lbl);			
+		else{
+			sprintf(buff,"GOTO %s",lbl);
+			strcpy(q->res,buff);			
+		}
 	}
 }
 
@@ -638,7 +718,7 @@ char* newTemp(){
 }
 
 char* newLabel(){
-	/*'_t'+32 possible digits*/
+	/*'L'+32 possible digits*/
 	char* ptr=(char*)malloc(33);
 	sprintf(ptr,"L%d",label++);
 	return ptr;
@@ -659,22 +739,47 @@ expr* createExpression(type* t){
 }
 
 /*????*/
-statement* createStatement(vector* code){
-	statement st={.code=code};
+statement* createStatement(){
+	statement st={};
 	statement* ptr=(statement*)malloc(sizeof(statement));
 	*ptr=st;
 	return ptr;
 }
 
+ifthen* createIfThen(condition* c){
+	ifthen it={.btl=c->tl,.bfl=c->fl,.nextlist=NULL};
+	ifthen* ptr=(ifthen*)malloc(sizeof(ifthen));
+	*ptr=it;
+	return ptr;
+}
+
+ifelse* createIfElse(){
+	ifelse ie={};
+	ifelse* ptr=(ifelse*)malloc(sizeof(ifelse));
+	*ptr=ie;
+	return ptr;
+}
+
+ifaux* createIfAux(){
+	ifaux ia={.nextlist=createList(),.lbl=""};
+	ifaux* ptr=(ifaux*)malloc(sizeof(ifaux));
+	*ptr=ia;
+	return ptr;
+}
+
 condition* createConditionLists(){
-	vector* tl=(vector*)malloc(sizeof(vector));
-	vector_init(tl);
-	vector* fl=(vector*)malloc(sizeof(vector));
-	vector_init(fl);
+	vector* tl=createList();
+	vector* fl=createList();
 	condition c={.tl=tl,.fl=fl};
 	condition* ptr=(condition*)malloc(sizeof(condition));
 	*ptr=c;
 	return ptr;
+}
+
+vector* createList(){
+	vector* ptr=(vector*)malloc(sizeof(vector));
+	vector_init(ptr);
+	return ptr;	
 }
 
 /*linear search, improve*/
@@ -851,9 +956,8 @@ void print_type_table(){
 	}
 }
 
-void print_quads(){
+void print_quads(vector* quads){
 	int i;
-	printf("Quads:\n");
 	for (i = 0; i < vector_total(quads); i++){
 		quad* q=((quad*)vector_get(quads,i));
 		if(strcmp(q->op,"LTHAN")==0)
@@ -901,6 +1005,7 @@ int main(int argc, char** argv){
 
 	init();
 	yyparse();
+	print_quads(quads);
 	print_type_table();
 	printf("Main symbol table\n");
 	print_symbol_table();

@@ -2,8 +2,9 @@ doble arr[10][10];
 registro {doble real;doble imaginario;} complejo;
 
 func entero main(entero a, entero b){
-	entero c;
-	si(c==0 y c==1+1+1-1){
-		regresa;
-	}
+	si(0==0)
+		si(1==1)
+			a=100;
+		sino
+			a=5;
 }
