@@ -1,10 +1,8 @@
-doble arr[10][10];
-registro {doble real;doble imaginario;} complejo;
+func entero sum(entero a,entero b){
+	regresa a+b;
+}
 
-func entero main(entero a, entero b){
-	si(0==0)
-		si(1==1)
-			a=100;
-		sino
-			a=5;
+func entero main(){
+	entero a,b,c;
+	c=sum(a,b);
 }

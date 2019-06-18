@@ -101,10 +101,15 @@ void yyerror(char*);
 		char lbl[33];
 	} ifaux;
 
+	typedef struct{
+		vector* args;
+		int num;
+	} params;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
-	int functionAlreadyUsed;
+	type* currentFnType;
 	expr* zero;
 
 	/*functions used withing semantic actions*/
@@ -139,12 +144,15 @@ void yyerror(char*);
 	ifelse* createIfElse();
 	vector* createList();
 	ifaux* createIfAux();
+	sym* lookupFunction(char*);
+	params* createParams();
 }
 
 %union{
 	type* tipo;
 	char lexval[32];
 	char rel[32];
+	char lbl[33];
 	double numdouble;
 	float numfloat;
 	int numint;
@@ -156,6 +164,7 @@ void yyerror(char*);
 	ifthen* it;
 	ifelse* ie;
 	ifaux* nif;
+	params* p;
 }
 
 %token IF ELSE RETURN 
@@ -189,10 +198,12 @@ void yyerror(char*);
 %type<exp> Expression LeftPart
 %type<arr> ArrayVar
 %type<tipo> Array
-%type<stmt> Statement
+%type<stmt> Statement Statements
 %type<it> If
 %type<ie> Else
 %type<nif> Nif
+%type<lbl> Mstmt
+%type<p> Params ListParams
 %type<cond> Condition
 %type<rel> Relational
 %type<lexval> ID
@@ -211,6 +222,7 @@ Declarations :
 				| Type List SC  Declarations
 
 /*type not necessary!! just testing!!*/
+/*redo with values!*/
 /*tipo -> int | float | double | char | void */
 Type :    INTEGER 								{t=(type*)vector_get(tt,1);}
 		| FLOAT   								{t=(type*)vector_get(tt,2);}
@@ -287,33 +299,30 @@ Array :   /*epsilon*/                       {$$=t;}
 /*funciones -> func tipo id(argumentos){declaraciones sentencias} funciones | epsilon*/
 Functions : 
 			| FUNC	Type ID LPAREN									{
-																			if(existsSymbol($3)>-1)
-																				functionAlreadyUsed=1;
-																			else{
-																				push(env,(void*)ts);
-																				push(stack,(void*)offset);
-																				offset=newOffset();
-																				ts=newSymbolTable();
-																			}
+																		if(existsSymbol($3)>-1){
+															   				char buff[100];
+															   				sprintf(buff,"Id %s has been already declared",$3);
+															   				yyerror(buff);
 																		}
-			Args 														{}
-			RPAREN LBRACKET Declarations Statements RBRACKET Functions {
-																			printf("Symbol table for %s\n",$3);
-																			print_symbol_table();
-																			if(functionAlreadyUsed==0){
-																				vector* prev=ts;
-																				ts=(vector*)pop(env);
-																				offset=(unsigned int*)pop(stack);
-																				insertFunction($3,t,"function",prev,$6);
-																			}
-																			else{
-																	   			char buff[100];
-																	   			sprintf(buff,"Id %s has been already declared",$3);
-																	   			yyerror(buff);
-																	   		}
-			 															}
-			
-			
+																		else{
+																			currentFnType=t;
+																			push(env,(void*)ts);
+																			push(stack,(void*)offset);
+																			offset=newOffset();
+																			ts=newSymbolTable();
+																			genQuad("LABEL",$3,"","");
+																		}
+																	}
+			Args RPAREN LBRACKET Declarations Statements RBRACKET  {
+																		printf("Symbol table for %s\n",$3);
+																		print_symbol_table();
+																		vector* prev=ts;
+																		ts=(vector*)pop(env);
+																		offset=(unsigned int*)pop(stack);
+																		insertFunction($3,t,"function",prev,$6);
+			 														}
+			Functions 												{}
+
 
 Args :   /*epsilon*/ {$$=0;}
 		| ListArgs   {$$=$1;}
@@ -338,8 +347,13 @@ ListArgs :    ListArgs COMMA Type ID   {
 											}
 										}
 
-Statements :  Statements Statement 
-			| Statement
+Statements :  Statements Mstmt Statement 	{
+												backpatch($1->nextlist,$2);
+												$$=$3;
+										 	}
+			| Statement 					{
+												$$=$1;
+											}
 
 Statement :   If Else  															{
 																					//ifthen
@@ -355,17 +369,19 @@ Statement :   If Else  															{
 																						$$->nextlist=merge(temp,$2->nextlist);
 																					}
 																				}
-			| WHILE LPAREN	 													{
-
-																				}	 
-			  Condition RPAREN 													{
-
-			  																	} 
-			  Statement 														{
-
+			| WHILE LPAREN Mstmt Condition RPAREN Mstmt Statement  				{
+																					$$=createStatement();
+																					backpatch($7->nextlist,$3);
+																					backpatch($4->tl,$6);
+																					$$->nextlist=($4->fl);
+																					genQuad("GOTO",$3,"","");																		
 																				}
-			| DO Statement WHILE LPAREN Condition RPAREN SC 					{
-
+			| DO Mstmt Statement WHILE LPAREN Mstmt Condition RPAREN SC 		{
+																					$$=createStatement();
+																					backpatch($3->nextlist,$6);
+																					backpatch($7->tl,$2);
+																					$$->nextlist=($7->fl);
+																					genQuad("GOTO",$6,"","");
 																				}
 			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement   {
 
@@ -383,13 +399,33 @@ Statement :   If Else  															{
 																					}
 																				}
 			| RETURN Expression SC 												{
-
+																					char buff[100];
+																					if(strcmp(currentFnType->name,($2->tipo)->name)==0)
+																						genQuad("RETURN",$2->dir,"","");
+																					else{
+																						sprintf(buff,"Error: Return type doesn't match function declaration.");
+																						yyerror(buff);
+																					}
 																				}
-			| RETURN SC 														{}
-			| LBRACKET Statements RBRACKET 										{}
+			| RETURN SC 														{
+																					char buff[100];
+																					if(strcmp(currentFnType->name,"void")==0)
+																						genQuad("RETURN","","","");
+																					else{
+																						sprintf(buff,"Error: Return type doesn't match function declaration.");
+																						yyerror(buff);
+																					}
+																				}
+			| LBRACKET Statements RBRACKET 										{$$=$2;}
 			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
 			| BREAK SC  														{}
 			| PRINT Expression 													{}
+
+//generate labels for statements
+Mstmt : {
+			strcpy($$,newLabel());
+			genQuad("LABEL",$$,"","");
+		}
 
 If : IF LPAREN Condition RPAREN {
 									char* lbl=newLabel();
@@ -553,15 +589,82 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 			| NUMINT                       {$$=createExpression((type*)vector_get(tt,1));sprintf($$->dir,"%d",$1);} //1
 			| NUMFLOAT                     {$$=createExpression((type*)vector_get(tt,2));sprintf($$->dir,"%f",$1);} //2
 			| NUMDOUBLE                    {$$=createExpression((type*)vector_get(tt,3));sprintf($$->dir,"%f",$1);} //3
-			| ID LPAREN Params RPAREN      {}
+			| ID LPAREN Params RPAREN      {
+												char buff[100];
+												sym* res=lookupFunction($1);
+												if(res!=NULL&&(strcmp(res->var_type,"function")==0)){
+													if(res->args==$3->num){
+														vector* fts=res->lts;
+														int i;
+														for(i=0;i<res->args;i++){
+															sym* ca=(sym*)vector_get(fts,i);
+															expr* exp=(expr*)vector_get($3->args,i);
+															//sanity check, symbol entry should be arg
+															if(strcmp(ca->var_type,"arg")==0){
+																//check if arg[i]'s type corresponds to param[i]'s type'
+																if(strcmp((exp->tipo)->name,(ca->type)->name)==0)
+																	genQuad("PUSH",exp->dir,"","");
+
+																else
+																	sprintf(buff,"Error: Parameter %d differs in type with declared type",i);
+															}
+															else{
+																sprintf(buff,"Error: arg number %d and arg entries differ",i);
+																yyerror(buff);
+															}
+														}
+														$$=createExpression(res->type);
+														//it can't be void with this grammar!!
+														sprintf(buff,"%d",res->args);
+														char* t=newTemp();
+														genQuad("CALL",$1,buff,t);
+														strcpy($$->dir,t);
+													}
+													else{
+														sprintf(buff,"Error: Function needs %d arguments, %d were given",res->args,$3->num);
+														yyerror(buff);
+													}
+
+												}
+												else{
+													sprintf(buff,"Error: No function %s declared",$1);
+													yyerror(buff);
+												}
+										   }
 
 /*Params -> lista_parametros | Epsilon*/
-Params : | ListParams
+Params :   /*epsilon*/	{createParams();}
+		 | ListParams 	{$$=$1;}
 
 /*Lista_parametros -> lista_parametros, expresion | expresion*/
-ListParams :  ListParams COMMA Expression 
-			| Expression
+ListParams :  ListParams COMMA Expression   {
+												char buff[100];
+												$$=$1;
+												if(strcmp(($3->tipo)->name,"void")!=0){
+													vector_add($1->args,$3);
+													$$->num++;
+												}
+												else{
+													sprintf(buff,"Error: Parameter %d is of type void.",$$->num);
+													yyerror(buff);
+												}
+											}
+			| Expression 					{
+												/*should be the first param*/
+												char buff[100];
+												$$=createParams();
+												if(strcmp(($1->tipo)->name,"void")!=0){
+													vector_add($$->args,$1);
+													$$->num++;
+												}
+												else{
+													sprintf(buff,"Error: Parameter %d is of type void.",$$->num);
+													yyerror(buff);
+												}
 
+											}
+
+/*improve using Mstmt, change Mstmt name, etc.*/
 Condition :   Condition OR 						{
 													char* lbl=newLabel();
 													backpatch($1->fl,lbl);
@@ -656,10 +759,11 @@ void backpatch(vector* lst,char* lbl){
 	}
 }
 
+/*changed to void, check if it still works, it should though*/
 vector* merge(vector* v1,vector* v2){
 	int i;
 	for (i = 0;i<vector_total(v2); i++){
-		quad* q=(quad*)vector_get(v2,i);
+		void* q=vector_get(v2,i);
 		vector_add(v1,q);
 	}
 	return v1;
@@ -767,6 +871,13 @@ ifaux* createIfAux(){
 	return ptr;
 }
 
+params* createParams(){
+	params p={.num=0,.args=createList()};
+	params* ptr=(params*)malloc(sizeof(params));
+	*ptr=p;
+	return ptr;	
+}
+
 condition* createConditionLists(){
 	vector* tl=createList();
 	vector* fl=createList();
@@ -826,14 +937,16 @@ sym* lookupSymbol(char* id){
 	return NULL;
 }
 
-/*	typedef struct{
-    	char id[32];
-    	char var_type[32];
-    	type* type;
-    	int dir;
-    	type* args[32];
-    	int arg_num;
-	} sym;*/
+sym* lookupFunction(char* id){
+	vector* ts=(vector*)vector_get(env,0);
+	int res=existsSymbolInTable(id,ts);
+	if(res>-1){
+		sym* psym=(sym*)vector_get(ts,res);
+		return psym;
+	}
+	return NULL;
+}
+
 sym* insertSymbol(char* id,type* tp,char* var_type){
 	sym ns={.id="",.var_type="",.type=tp,.dir=*offset,.args=-1,.lts=NULL};
 	strcpy(ns.id,id);
@@ -892,7 +1005,6 @@ void* pop(vector* s){
 }
 
 void init(){
-	functionAlreadyUsed=0;
 
 	ts=(vector*)malloc(sizeof(vector));
 	tt=(vector*)malloc(sizeof(vector));
@@ -956,28 +1068,35 @@ void print_type_table(){
 	}
 }
 
+/*TODO: Pretty print*/
 void print_quads(vector* quads){
 	int i;
 	for (i = 0; i < vector_total(quads); i++){
 		quad* q=((quad*)vector_get(quads,i));
 		if(strcmp(q->op,"LTHAN")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"GTHAN")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"LETHAN")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"GETHAN")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"EQUAL")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"NEQUAL")==0)
-			printf("%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
 		else if(strcmp(q->op,"GOTO")==0)
-			printf("%s %s\n",q->op,q->arg1);
+			printf("\t%s %s\n",q->op,q->arg1);
 		else if(strcmp(q->op,"LABEL")==0)
 			printf("%s %s\n",q->op,q->arg1);
+		else if(strcmp(q->op,"PUSH")==0)
+			printf("\t%s %s\n",q->op,q->arg1);
+		else if(strcmp(q->op,"CALL")==0)
+			printf("\t%s := %s %s %s\n",q->res,q->op,q->arg1,q->arg2);
+		else if(strcmp(q->op,"RETURN")==0)
+			printf("\t%s %s\n",q->op,q->arg1);
 		else	
-			printf("%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
+			printf("\t%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
 	}
 }
 

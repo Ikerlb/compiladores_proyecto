@@ -110,10 +110,15 @@ extern int yydebug;
 		char lbl[33];
 	} ifaux;
 
+	typedef struct{
+		vector* args;
+		int num;
+	} params;
+
 	/*TEMPS I DONT KNOW HOW TO HANDLE YET */
 	/*FOR INSTANCE INHERITED ATTRIBUTES*/
 	type* t;
-	int functionAlreadyUsed;
+	type* currentFnType;
 	expr* zero;
 
 	/*functions used withing semantic actions*/
@@ -148,8 +153,10 @@ extern int yydebug;
 	ifelse* createIfElse();
 	vector* createList();
 	ifaux* createIfAux();
+	sym* lookupFunction(char*);
+	params* createParams();
 
-#line 153 "parser.tab.h" /* yacc.c:1927  */
+#line 160 "parser.tab.h" /* yacc.c:1927  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -216,11 +223,12 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 144 "parser.y" /* yacc.c:1927  */
+#line 151 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];
 	char rel[32];
+	char lbl[33];
 	double numdouble;
 	float numfloat;
 	int numint;
@@ -232,8 +240,9 @@ union YYSTYPE
 	ifthen* it;
 	ifelse* ie;
 	ifaux* nif;
+	params* p;
 
-#line 237 "parser.tab.h" /* yacc.c:1927  */
+#line 246 "parser.tab.h" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;
