@@ -1,8 +1,7 @@
-func entero sum(entero a,entero b){
-	regresa a+b;
-}
-
 func entero main(){
-	entero a,b,c;
-	c=sum(a,b);
+	entero i,j;
+	j=0;
+	para({i=0;};j<10;{i=i+1;})
+		j=j*j;
+	regresa j;
 }

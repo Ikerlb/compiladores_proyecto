@@ -32,7 +32,7 @@ vector* stack;
 unsigned int temp=0;
 unsigned int label=0;
 
-void yyerror(char*);
+void yyerror(const char*);
 
 %}
 
@@ -314,8 +314,8 @@ Functions :
 																		}
 																	}
 			Args RPAREN LBRACKET Declarations Statements RBRACKET  {
-																		printf("Symbol table for %s\n",$3);
-																		print_symbol_table();
+																		//printf("Symbol table for %s\n",$3);
+																		//print_symbol_table();
 																		vector* prev=ts;
 																		ts=(vector*)pop(env);
 																		offset=(unsigned int*)pop(stack);
@@ -358,10 +358,8 @@ Statements :  Statements Mstmt Statement 	{
 Statement :   If Else  															{
 																					//ifthen
 																					$$=createStatement();
-																					if($2==NULL){
+																					if($2==NULL)
 																						$$->nextlist=merge($1->bfl,$1->nextlist);
-																						//print_quads($$->nextlist);
-																					}
 																					//ifelse
 																					else{
 																						backpatch($1->bfl,$2->lbl);
@@ -383,8 +381,15 @@ Statement :   If Else  															{
 																					$$->nextlist=($7->fl);
 																					genQuad("GOTO",$6,"","");
 																				}
-			| FOR LPAREN Statement SC Condition SC Statement RPAREN Statement   {
-
+			| FOR LPAREN Statement SC Mstmt Condition SC Mstmt Statement 		{
+																					genQuad("GOTO",$5,"","");
+																				} 
+			RPAREN Mstmt Statement   											{
+																					$$=createStatement();
+																					backpatch($13->nextlist,$8);
+																					backpatch($6->tl,$12);
+																					$$->nextlist=$6->fl;
+																					genQuad("GOTO",$8,"","");
 																				}
 			| LeftPart ASSIGN Expression SC 									{
 																					/*CHECK!*/
@@ -420,6 +425,7 @@ Statement :   If Else  															{
 			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
 			| BREAK SC  														{}
 			| PRINT Expression 													{}
+			/*should add function call as a statement!*/
 
 //generate labels for statements
 Mstmt : {
@@ -505,6 +511,7 @@ LeftPart :    ID 		{
 
 ArrayVar :    ID LSBRACKET Expression RSBRACKET 		{
 															sym* res=lookupSymbol($1);
+															char buff[100];
 															if(res!=NULL){
 																$$=createArrVar((res->type)->base);
 																sprintf($$->base,"%s",res->id);
@@ -514,8 +521,8 @@ ArrayVar :    ID LSBRACKET Expression RSBRACKET 		{
 																genQuad("PROD",$3->dir,buff,$$->dir);
 															}
 															else{
-																char* s="Symbol not found";
-																yyerror(s);
+																sprintf(buff,"Error: Id %s has not been declared.",$1);
+																yyerror(buff);
 															}
 														}
 			| ArrayVar LSBRACKET Expression RSBRACKET   {
@@ -539,14 +546,15 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 			| PLUS Expression %prec UOPS   {$$=expression("PLUS",zero,$2);}
 			/*??*/
 			| ID					   	   {
+												char buff[100];
 												sym* res=lookupSymbol($1);
 												if(res!=NULL){
 													$$=createExpression(res->type);
 													sprintf($$->dir,"%s",res->id);
 												}
 												else{
-													char* s="Symbol not found.";
-													yyerror(s);
+													sprintf(buff,"Error: Id %s has not been declared.",$1);
+													yyerror(buff);
 												}	
 										   }
 			| ArrayVar 					   {
@@ -569,18 +577,18 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 															genQuad(".",$1,$3,$$->dir);
 														}
 														else{
-															sprintf(buff,"Register type %s does not contain field %s",$1,$3);
+															sprintf(buff,"Error: Register type %s does not contain field %s",$1,$3);
 															yyerror(buff);
 														}
 
 													}
 													else{
-														sprintf(buff,"Symbol %s is not of type register",$1);
+														sprintf(buff,"Error: variable %s is not of type register",$1);
 														yyerror(buff);
 													}
 												}
 												else{
-													sprintf(buff,"Symbol %s not found",$1);
+													sprintf(buff,"Variable %s not found",$1);
 													yyerror(buff);
 												}
 										    }
@@ -725,14 +733,17 @@ Relational :  LTHAN 	{strcpy($$,"LTHAN");}
 
 %%
 
-void yyerror(char* s){
+void yyerror(const char* s){
 	printf("Error found on line: %d\nArround word '%s'\n%s\n" , yylineno, yytext,s);
 }
 
 //look if yyerror halts or not
 expr* expression(char* op,expr* e1, expr* e2){
-	if((!isNumeric(e1->tipo))&&(!isNumeric(e2->tipo)))
-		yyerror("Type error.");
+	char buff[100];
+	if((!isNumeric(e1->tipo))&&(!isNumeric(e2->tipo))){
+		sprintf(buff,"Error: Expressions differ in type.");
+		yyerror(buff);
+	}
 	expr e={.tipo=NULL,.dir=""};
 	e.tipo=max(e1->tipo,e2->tipo);
 	strcpy(e.dir,newTemp());
@@ -1125,8 +1136,4 @@ int main(int argc, char** argv){
 	init();
 	yyparse();
 	print_quads(quads);
-	print_type_table();
-	printf("Main symbol table\n");
-	print_symbol_table();
-	printf("%d\n",*offset);
 }

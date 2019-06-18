@@ -1,6 +1,6 @@
 CC = gcc
 
-PROG = prueba
+PROG = c--
 
 end:
 	bison -d parser.y
