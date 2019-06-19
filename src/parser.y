@@ -435,9 +435,6 @@ Statement :   If Else  															{
 																					}
 																				}
 			| LBRACKET Statements RBRACKET 										{$$=$2;}
-			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
-			| BREAK SC  														{}
-			| PRINT Expression 													{}
 			/*added this because otherwise void functions are useless*/
 			| ID LPAREN Params RPAREN SC     									{
 																					char buff[100];
@@ -517,12 +514,6 @@ Nif : {
 		genQuad("LABEL",lbl,"","");
 		strcpy($$->lbl,lbl);
 	  }
-
-Cases : 
-		| CASE NUMINT COLON Statements Default
-
-Default : 
-			| DEFAULT COLON Statements
 
 
 LeftPart :    ID 		{
@@ -661,8 +652,6 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 													YYABORT;
 												}
 										    }
-			| VALSTRING                    {}
-			| CHAR                         {}
 			| NUMINT                       {$$=createExpression((type*)vector_get(tt,1));sprintf($$->dir,"%d",$1);} //1
 			| NUMFLOAT                     {$$=createExpression((type*)vector_get(tt,2));sprintf($$->dir,"%f",$1);} //2
 			| NUMDOUBLE                    {$$=createExpression((type*)vector_get(tt,3));sprintf($$->dir,"%f",$1);} //3
