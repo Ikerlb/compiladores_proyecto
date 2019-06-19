@@ -1,0 +1,6 @@
+LABEL main
+	complejo.real := 0.000000 ASSIGN 
+	LABEL L0
+		complejo.imaginario := 0.000000 ASSIGN 
+	LABEL L1
+		RETURN complejo

@@ -1,0 +1,10 @@
+func vacio main(){
+	entero a,b;
+	a=0;
+	b=0;
+	haz {
+		a=a+1;
+		b=b+2;
+	} mientras(b<100 y a<50);
+	regresa;
+}

@@ -1,0 +1,11 @@
+flotante r;
+
+func vacio init(){
+	r=1.0f;
+}
+
+func vacio main(){
+	flotante r;
+	r=0.0f;
+	regresa;
+}

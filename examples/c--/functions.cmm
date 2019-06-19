@@ -1,0 +1,10 @@
+func entero suma(entero a, entero b){
+	regresa a+b;
+}
+
+func entero main(){
+	entero a,b;
+	a=0;
+	b=0;
+	regresa suma(a,b);
+}

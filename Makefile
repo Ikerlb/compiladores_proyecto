@@ -5,6 +5,7 @@ DIR = ../bin/
 PROG = c--
 
 end:
+	make clean
 	mkdir bin
 	cd src;bison -d parser.y
 	cd src;flex lexer.l

@@ -1,0 +1,12 @@
+LABEL suma
+	_t0 := a PLUS b
+	RETURN _t0
+LABEL main
+	a := 0 ASSIGN 
+	LABEL L0
+		b := 0 ASSIGN 
+	LABEL L1
+		PUSH a
+		PUSH b
+		_t1 := CALL suma 2
+		RETURN _t1

@@ -1,0 +1,9 @@
+func vacio main(){
+	entero i,j;
+	i=0;
+	mientras(i<20 y j<10){
+		j=j+1;
+		i=i+1;
+	}
+	regresa;
+}

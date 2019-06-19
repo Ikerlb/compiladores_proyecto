@@ -1,0 +1,6 @@
+func registro {doble real;doble imaginario;} main(){
+	registro {doble real;doble imaginario;} complejo;
+	complejo.real=0.0;
+	complejo.imaginario=0.0;	
+	regresa complejo;
+}

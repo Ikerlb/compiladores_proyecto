@@ -44,7 +44,7 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 39 "parser.y" /* yacc.c:1927  */
+#line 42 "parser.y" /* yacc.c:1927  */
 
 	/*eww get rid of this*/
 	#include "vector.h"
@@ -144,7 +144,7 @@ extern int yydebug;
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
 	statement* createStatement();
-	void print_quads(vector*);
+	void print_quads(FILE*,vector*);
 	vector* newQuadsVector();
 	condition* createConditionLists();
 	void backpatch(vector*,char*);
@@ -223,7 +223,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 151 "parser.y" /* yacc.c:1927  */
+#line 154 "parser.y" /* yacc.c:1927  */
 
 	type* tipo;
 	char lexval[32];

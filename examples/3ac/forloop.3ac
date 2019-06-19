@@ -1,0 +1,17 @@
+LABEL main
+	j := 0 ASSIGN 
+	LABEL L0
+		i := 0 ASSIGN 
+	LABEL L1
+		LTHAN j 10 GOTO L3
+		GOTO L4
+	LABEL L2
+		_t0 := i PLUS 1
+		i := _t0 ASSIGN 
+		GOTO L1
+	LABEL L3
+		_t1 := j PROD j
+		j := _t1 ASSIGN 
+		GOTO L2
+	LABEL L4
+		RETURN j

@@ -1,0 +1,7 @@
+func flotante main(){
+	entero a;
+	flotante b;
+	a=0;
+	b=0.0f;
+	regresa a+b;
+}

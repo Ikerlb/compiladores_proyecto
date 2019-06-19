@@ -1,0 +1,8 @@
+LABEL main
+	a := 0 ASSIGN 
+	LABEL L0
+		b := 0.000000 ASSIGN 
+	LABEL L1
+		_t1 := (double) CAST a
+		_t0 := _t1 PLUS b
+		RETURN _t0

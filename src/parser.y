@@ -32,7 +32,10 @@ vector* stack;
 unsigned int temp=0;
 unsigned int label=0;
 
+int errors=0;
+
 void yyerror(const char*);
+void indent(FILE*,int);
 
 %}
 
@@ -135,7 +138,7 @@ void yyerror(const char*);
 	arrVar* createArrVar(type*);
 	int existsSymbolInTable(char*,vector*);
 	statement* createStatement();
-	void print_quads(vector*);
+	void print_quads(FILE*,vector*);
 	vector* newQuadsVector();
 	condition* createConditionLists();
 	void backpatch(vector*,char*);
@@ -232,7 +235,6 @@ Type :    INTEGER 								{t=(type*)vector_get(tt,1);}
 	  	| STRUCT 								{
 	  												push(env,(void*)ts);
 													push(stack,(void*)offset);
-
 													offset=newOffset();
 													ts=newSymbolTable();
 												}
@@ -254,13 +256,15 @@ List :    List COMMA ID Array  {
 								   		}
 								   		else{
 								   			
-								   			sprintf(buff,"Id %s has been already declared",$3);
+								   			sprintf(buff,"Variable %s has been already declared",$3);
 								   			yyerror(buff);
+								   			YYABORT;
 								   		}
 								   	}
 								   	else{
-								   		sprintf(buff,"Id %s can't be of type void",$3);
+								   		sprintf(buff,"Variable %s can't be of type void",$3);
 								   		yyerror(buff);
+								   		YYABORT;
 								   	}
 							   }
  		| ID Array             {
@@ -273,11 +277,13 @@ List :    List COMMA ID Array  {
 								   			char buff[100];
 								   			sprintf(buff,"Id %s has been already declared",$1);
 								   			yyerror(buff);
+								   			YYABORT;
 								   		}
 								   	}
 								   	else{
 								   		sprintf(buff,"Id %s can't be of type void",$1);
 								   		yyerror(buff);
+								   		YYABORT;
 								   	}
  							   }
 
@@ -293,6 +299,7 @@ Array :   /*epsilon*/                       {$$=t;}
 												else{
 													char* s="Arrays can't be negative size";
 													yyerror(s);
+													YYABORT;
 												}
 										    }
 
@@ -303,6 +310,7 @@ Functions :
 															   				char buff[100];
 															   				sprintf(buff,"Id %s has been already declared",$3);
 															   				yyerror(buff);
+															   				YYABORT;
 																		}
 																		else{
 																			currentFnType=t;
@@ -334,6 +342,7 @@ ListArgs :    ListArgs COMMA Type ID   {
 											else{
 												char* s="Repeated argument name";
 												yyerror(s);
+												YYABORT;
 											}
 													
 										}
@@ -344,6 +353,7 @@ ListArgs :    ListArgs COMMA Type ID   {
 											else{
 												char* s="Repeated argument name";
 												yyerror(s);
+												YYABORT;
 											}
 										}
 
@@ -379,7 +389,7 @@ Statement :   If Else  															{
 																					backpatch($3->nextlist,$6);
 																					backpatch($7->tl,$2);
 																					$$->nextlist=($7->fl);
-																					genQuad("GOTO",$6,"","");
+																					//genQuad("GOTO",$6,"","");
 																				}
 			| FOR LPAREN Statement SC Mstmt Condition SC Mstmt Statement 		{
 																					genQuad("GOTO",$5,"","");
@@ -401,6 +411,7 @@ Statement :   If Else  															{
 																					else{
 																						char* s="Error. Assign of two different types";
 																						yyerror(s);
+																						YYABORT;
 																					}
 																				}
 			| RETURN Expression SC 												{
@@ -410,6 +421,7 @@ Statement :   If Else  															{
 																					else{
 																						sprintf(buff,"Error: Return type doesn't match function declaration.");
 																						yyerror(buff);
+																						YYABORT;
 																					}
 																				}
 			| RETURN SC 														{
@@ -419,13 +431,60 @@ Statement :   If Else  															{
 																					else{
 																						sprintf(buff,"Error: Return type doesn't match function declaration.");
 																						yyerror(buff);
+																						YYABORT;
 																					}
 																				}
 			| LBRACKET Statements RBRACKET 										{$$=$2;}
 			| SWITCH LPAREN Expression RPAREN LBRACKET Cases RBRACKET           {}
 			| BREAK SC  														{}
 			| PRINT Expression 													{}
-			/*should add function call as a statement!*/
+			/*added this because otherwise void functions are useless*/
+			| ID LPAREN Params RPAREN SC     									{
+																					char buff[100];
+																					sym* res=lookupFunction($1);
+																					if(res!=NULL&&(strcmp(res->var_type,"function")==0)){
+																						if(res->args==$3->num){
+																							vector* fts=res->lts;
+																							int i;
+																							for(i=0;i<res->args;i++){
+																								sym* ca=(sym*)vector_get(fts,i);
+																								expr* exp=(expr*)vector_get($3->args,i);
+																								//sanity check, symbol entry should be arg
+																								if(strcmp(ca->var_type,"arg")==0){
+																									//check if arg[i]'s type corresponds to param[i]'s type'
+																									if(strcmp((exp->tipo)->name,(ca->type)->name)==0)
+																										genQuad("PUSH",exp->dir,"","");
+																									else{
+																										sprintf(buff,"Error: Parameter %d differs in type with declared type",i);
+																										yyerror(buff);
+																										YYABORT;
+																									}
+																								}
+																								else{
+																									sprintf(buff,"Error: arg number %d and arg entries differ",i);
+																									yyerror(buff);
+																									YYABORT;
+																								}
+																							}
+																							$$=createStatement();
+																							$$->nextlist=createList();
+																							//it can't be void with this grammar!!
+																							sprintf(buff,"%d",res->args);
+																							genQuad("CALL",$1,buff,"");
+																						}
+																						else{
+																							sprintf(buff,"Error: Function needs %d arguments, %d were given",res->args,$3->num);
+																							yyerror(buff);
+																							YYABORT;
+																						}
+
+																					}
+																					else{
+																						sprintf(buff,"Error: No function %s declared",$1);
+																						yyerror(buff);
+																						YYABORT;
+																					}
+																			    }
 
 //generate labels for statements
 Mstmt : {
@@ -468,13 +527,15 @@ Default :
 
 LeftPart :    ID 		{
 							sym* res=lookupSymbol($1);
+							char buff[100];
 							if(res!=NULL){
 								$$=createExpression(res->type);
 								sprintf($$->dir,"%s",res->id);
 							}
 							else{
-								char* s="Symbol not found.";
-								yyerror(s);
+								sprintf(buff,"Error: %s has not been previously declared",$1);
+								yyerror(buff);
+								YYABORT;
 							}
 						}
 			| ArrayVar  {
@@ -494,18 +555,21 @@ LeftPart :    ID 		{
 										sprintf($$->dir,"%s.%s",$1,$3);
 									}
 									else{
-										sprintf(buff,"Register type %s does not contain field %s",$1,$3);
+										sprintf(buff,"Error: Register type %s does not contain field %s",$1,$3);
 										yyerror(buff);
+										YYABORT;
 									}
 								}
 								else{
-									sprintf(buff,"Symbol %s is not of type register",$1);
+									sprintf(buff,"Error: Symbol %s is not of type register",$1);
 									yyerror(buff);
+									YYABORT;
 								}
 							}
 							else{
 								sprintf(buff,"Symbol %s not found",$1);
 								yyerror(buff);
+								YYABORT;
 							}
 						}
 
@@ -523,6 +587,7 @@ ArrayVar :    ID LSBRACKET Expression RSBRACKET 		{
 															else{
 																sprintf(buff,"Error: Id %s has not been declared.",$1);
 																yyerror(buff);
+																YYABORT;
 															}
 														}
 			| ArrayVar LSBRACKET Expression RSBRACKET   {
@@ -555,6 +620,7 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 												else{
 													sprintf(buff,"Error: Id %s has not been declared.",$1);
 													yyerror(buff);
+													YYABORT;
 												}	
 										   }
 			| ArrayVar 					   {
@@ -579,17 +645,20 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 														else{
 															sprintf(buff,"Error: Register type %s does not contain field %s",$1,$3);
 															yyerror(buff);
+															YYABORT;
 														}
 
 													}
 													else{
 														sprintf(buff,"Error: variable %s is not of type register",$1);
 														yyerror(buff);
+														YYABORT;
 													}
 												}
 												else{
 													sprintf(buff,"Variable %s not found",$1);
 													yyerror(buff);
+													YYABORT;
 												}
 										    }
 			| VALSTRING                    {}
@@ -613,12 +682,16 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 																if(strcmp((exp->tipo)->name,(ca->type)->name)==0)
 																	genQuad("PUSH",exp->dir,"","");
 
-																else
+																else{
 																	sprintf(buff,"Error: Parameter %d differs in type with declared type",i);
+																	yyerror(buff);
+																	YYABORT;
+																}
 															}
 															else{
 																sprintf(buff,"Error: arg number %d and arg entries differ",i);
 																yyerror(buff);
+																YYABORT;
 															}
 														}
 														$$=createExpression(res->type);
@@ -631,12 +704,14 @@ Expression :  Expression PLUS Expression   {$$=expression("PLUS",$1,$3);}
 													else{
 														sprintf(buff,"Error: Function needs %d arguments, %d were given",res->args,$3->num);
 														yyerror(buff);
+														YYABORT;
 													}
 
 												}
 												else{
 													sprintf(buff,"Error: No function %s declared",$1);
 													yyerror(buff);
+													YYABORT;
 												}
 										   }
 
@@ -655,6 +730,7 @@ ListParams :  ListParams COMMA Expression   {
 												else{
 													sprintf(buff,"Error: Parameter %d is of type void.",$$->num);
 													yyerror(buff);
+													YYABORT;
 												}
 											}
 			| Expression 					{
@@ -668,6 +744,7 @@ ListParams :  ListParams COMMA Expression   {
 												else{
 													sprintf(buff,"Error: Parameter %d is of type void.",$$->num);
 													yyerror(buff);
+													YYABORT;
 												}
 
 											}
@@ -711,6 +788,7 @@ Condition :   Condition OR 						{
 														char buff[100];
 														sprintf(buff,"Expressions %s and %s have different types.",$1->dir,$3->dir);
 														yyerror(buff);
+														YYABORT;
 													}
 												}
 			| TRUE 								{
@@ -734,6 +812,7 @@ Relational :  LTHAN 	{strcpy($$,"LTHAN");}
 %%
 
 void yyerror(const char* s){
+	errors++;
 	printf("Error found on line: %d\nArround word '%s'\n%s\n" , yylineno, yytext,s);
 }
 
@@ -948,6 +1027,8 @@ sym* lookupSymbol(char* id){
 	return NULL;
 }
 
+/*IMPORTANT: It works because there are no function calls outside a function scope.*/
+/*Env must have global sym table!*/
 sym* lookupFunction(char* id){
 	vector* ts=(vector*)vector_get(env,0);
 	int res=existsSymbolInTable(id,ts);
@@ -1080,35 +1161,80 @@ void print_type_table(){
 }
 
 /*TODO: Pretty print*/
-void print_quads(vector* quads){
+void print_quads(FILE* f,vector* quads){
 	int i;
+	int lvl=1;
 	for (i = 0; i < vector_total(quads); i++){
 		quad* q=((quad*)vector_get(quads,i));
-		if(strcmp(q->op,"LTHAN")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"GTHAN")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"LETHAN")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"GETHAN")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"EQUAL")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"NEQUAL")==0)
-			printf("\t%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
-		else if(strcmp(q->op,"GOTO")==0)
-			printf("\t%s %s\n",q->op,q->arg1);
-		else if(strcmp(q->op,"LABEL")==0)
-			printf("%s %s\n",q->op,q->arg1);
-		else if(strcmp(q->op,"PUSH")==0)
-			printf("\t%s %s\n",q->op,q->arg1);
-		else if(strcmp(q->op,"CALL")==0)
-			printf("\t%s := %s %s %s\n",q->res,q->op,q->arg1,q->arg2);
-		else if(strcmp(q->op,"RETURN")==0)
-			printf("\t%s %s\n",q->op,q->arg1);
-		else	
-			printf("\t%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
+		if(strcmp(q->op,"LTHAN")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"GTHAN")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"LETHAN")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"GETHAN")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"EQUAL")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"NEQUAL")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s %s %s\n",q->op,q->arg1,q->arg2,q->res);
+		}
+		else if(strcmp(q->op,"GOTO")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s\n",q->op,q->arg1);
+		}
+		else if(strcmp(q->op,"LABEL")==0){
+			if((q->arg1)[0]=='L'){
+				indent(f,1);
+				if(lvl==1)
+					lvl++;
+				fprintf(f,"%s %s\n",q->op,q->arg1);
+			}
+			else{
+				if(lvl>1)
+					lvl--;
+				fprintf(f,"%s %s\n",q->op,q->arg1);
+			}
+		}
+		else if(strcmp(q->op,"PUSH")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s\n",q->op,q->arg1);
+		}
+		else if(strcmp(q->op,"CALL")==0){
+			if(strcmp(q->res,"")==0){
+				indent(f,lvl);
+				fprintf(f,"%s %s %s\n",q->op,q->arg1,q->arg2);
+			}
+			else{
+				indent(f,lvl);
+				fprintf(f,"%s := %s %s %s\n",q->res,q->op,q->arg1,q->arg2);
+			}
+		}
+		else if(strcmp(q->op,"RETURN")==0){
+			indent(f,lvl);
+			fprintf(f,"%s %s\n",q->op,q->arg1);
+		}
+		else{
+			indent(f,lvl);
+			fprintf(f,"%s := %s %s %s\n",q->res,q->arg1,q->op,q->arg2);
+		}
 	}
+}
+
+void indent(FILE* f,int n){
+    for (int i = 0; i < n; i++)
+       fprintf(f,"\t");
 }
 
 void print_symbol_table(){
@@ -1120,14 +1246,44 @@ void print_symbol_table(){
 }
 
 int main(int argc, char** argv){
+	char outputf[100];
+	char routputf[100];
 	FILE* f;
 	FILE* o;
-	if(argc>1){
-		if((f=fopen(argv[1],"r"))==0)
-			fprintf(stderr,"Error abriendo archivo\n");
+	if(argc==5){
+		int i;
+		/*First we find the -i flag*/
+		for (i=0;i<argc;i++){
+			if(strcmp(argv[i],"-i")==0){
+				/*input file should be i+1*/
+				if(i<=(argc-2)){
+					/*check if i+1 is a file*/
+					if((f=fopen(argv[i+1],"r"))==0){
+						fprintf(stderr,"Error opening input file.\nUsage is ./c-- -i cminusprog.txt -o 3ac.txt\n");
+						return 0;
+					}
+				}
+				break;
+			}
+		}
+		/*Then we find the -o flag*/
+		for (i=0;i<argc;i++){
+			if(strcmp(argv[i],"-o")==0){
+				/*output file should be i+1*/
+				if(i<=(argc-2)){
+					/*check if i+1 is a file*/
+					strcpy(outputf,argv[i+1]);
+					if((o=fopen(outputf,"w"))==0){
+						fprintf(stderr,"Error opening output file.\nUsage is ./c-- -i cminusprog.txt -o 3ac.txt\n");
+						return 0;
+					}
+				}
+			break;
+			}
+		}
 	}
 	else{
-		fprintf(stderr,"Error el archivo se debe de pasar como un argumento.\n");
+		fprintf(stderr,"Error. Usage is ./c-- -i cminusprog.txt -o 3ac.txt\n");
 		return 0;
 	}
 
@@ -1135,5 +1291,24 @@ int main(int argc, char** argv){
 
 	init();
 	yyparse();
-	print_quads(quads);
+
+	int mf=existsSymbol("main");
+	char buff[100];
+	if(errors==0){
+		if(mf==-1){
+			sprintf(buff,"Error: No main function declared.");
+			yyerror(buff);
+		}
+		else if(vector_total(ts)-1!=mf){
+			sprintf(buff,"Error: Main function should be the last declared function");
+			yyerror(buff);
+		}
+		else{
+			// print_symbol_table();
+			// print_type_table();
+			realpath(outputf,routputf);
+			printf("Compilation front-end completed succesfully. Three address code written in %s.\n",routputf);
+			print_quads(o,quads);
+		}
+	}
 }

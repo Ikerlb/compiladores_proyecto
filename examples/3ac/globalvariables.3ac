@@ -1,0 +1,6 @@
+LABEL init
+	r := 1.000000 ASSIGN 
+LABEL main
+	r := 0.000000 ASSIGN 
+	LABEL L0
+		RETURN 
